@@ -1,0 +1,27 @@
+import axios from 'axios';
+
+const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('medifirst_token');
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  return config;
+});
+
+export const getApiError = (error) => (
+  error.response?.data?.error
+  || error.response?.data?.message
+  || error.message
+  || 'Something went wrong.'
+);
+
+export default apiClient;

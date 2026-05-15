@@ -1,4 +1,5 @@
 from datetime import datetime
+import json
 from backend.database.db import db
 
 
@@ -33,19 +34,34 @@ class Report(db.Model):
     patient = db.relationship("Patient", backref="reports")
     user = db.relationship("User", backref="reports")
 
+    @staticmethod
+    def _json_list(value):
+        if not value:
+            return []
+
+        if isinstance(value, list):
+            return value
+
+        try:
+            parsed = json.loads(value)
+        except (TypeError, json.JSONDecodeError):
+            return []
+
+        return parsed if isinstance(parsed, list) else []
+
     def to_dict(self):
         return {
             "id": self.id,
             "patient_id": self.patient_id,
             "user_id": self.user_id,
             "symptoms_text": self.symptoms_text,
-            "selected_symptoms": self.selected_symptoms,
-            "body_areas": self.body_areas,
+            "selected_symptoms": self._json_list(self.selected_symptoms),
+            "body_areas": self._json_list(self.body_areas),
             "severity_score": self.severity_score,
             "severity_level": self.severity_level,
             "emergency_flag": self.emergency_flag,
             "recommendation": self.recommendation,
-            "precautions": self.precautions,
+            "precautions": self._json_list(self.precautions),
             "suggested_care": self.suggested_care,
             "language": self.language,
             "rural_mode": self.rural_mode,

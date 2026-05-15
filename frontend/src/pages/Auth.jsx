@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import useStore from '../store/useStore';
 import toast from 'react-hot-toast';
+import { getApiError } from '../api/apiClient';
+import { loginUser, registerUser } from '../api/authApi';
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -22,24 +24,33 @@ const Auth = () => {
   const [isOtpSent, setIsOtpSent] = useState(false);
   
   const navigate = useNavigate();
-  const { setUser } = useStore();
+  const { setAuth } = useStore();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      if (!isOtpSent && !isLogin) {
-        setIsOtpSent(true);
-        toast.success('OTP sent to your mobile number');
-        setIsLoading(false);
-      } else {
-        setUser({ id: '1', name: 'John Doe', email: 'john@example.com' });
-        toast.success(isLogin ? 'Welcome back!' : 'Account created successfully!');
-        navigate('/dashboard');
-      }
-    }, 1500);
+
+    const formData = new FormData(e.currentTarget);
+    const payload = {
+      name: formData.get('name') || 'MediFirst User',
+      email: formData.get('email'),
+      password: formData.get('password'),
+      role: 'patient',
+    };
+
+    try {
+      const data = isLogin
+        ? await loginUser(payload)
+        : await registerUser(payload);
+
+      setAuth({ user: data.user, token: data.token });
+      toast.success(isLogin ? 'Welcome back!' : 'Account created successfully!');
+      navigate('/dashboard');
+    } catch (error) {
+      toast.error(getApiError(error));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -83,6 +94,7 @@ const Auth = () => {
                       <label className="text-sm font-bold text-slate-700 ml-1">Full Name</label>
                       <input 
                         type="text" 
+                        name="name"
                         required 
                         placeholder="John Doe" 
                         className="input"
@@ -99,9 +111,10 @@ const Auth = () => {
                         {isLogin ? <Mail size={20} /> : <Smartphone size={20} />}
                       </div>
                       <input 
-                        type={isLogin ? "text" : "tel"} 
+                        type="email"
+                        name="email"
                         required 
-                        placeholder={isLogin ? "name@email.com" : "+91 98765 43210"} 
+                        placeholder="name@email.com"
                         className="input pl-12"
                       />
                     </div>
@@ -114,6 +127,7 @@ const Auth = () => {
                         <Lock size={20} />
                       </div>
                       <input 
+                        name="password"
                         type={showPassword ? "text" : "password"} 
                         required 
                         placeholder="••••••••" 
@@ -194,7 +208,7 @@ const Auth = () => {
                     exit={{ opacity: 0 }}
                     className="flex items-center gap-2"
                   >
-                    {isOtpSent ? 'Verify & Continue' : (isLogin ? 'Login' : 'Send OTP')}
+                    {isLogin ? 'Login' : 'Create Account'}
                     <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
                   </motion.div>
                 )}

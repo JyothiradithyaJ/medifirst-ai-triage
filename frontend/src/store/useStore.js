@@ -5,7 +5,14 @@ const useStore = create((set) => ({
   user: null,
   isAuthenticated: false,
   setUser: (user) => set({ user, isAuthenticated: !!user }),
-  logout: () => set({ user: null, isAuthenticated: false }),
+  setAuth: ({ user, token }) => {
+    localStorage.setItem('medifirst_token', token);
+    set({ user, isAuthenticated: true });
+  },
+  logout: () => {
+    localStorage.removeItem('medifirst_token');
+    set({ user: null, isAuthenticated: false });
+  },
 
   // Rural Mode State
   isRuralMode: false,
@@ -24,6 +31,8 @@ const useStore = create((set) => ({
 
   // Health State
   recentTriage: [],
+  currentTriage: null,
+  setCurrentTriage: (result) => set({ currentTriage: result }),
   addTriage: (result) => set((state) => ({ 
     recentTriage: [result, ...state.recentTriage].slice(0, 5) 
   })),

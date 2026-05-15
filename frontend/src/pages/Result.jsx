@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -23,15 +23,78 @@ import {
 } from 'recharts';
 import useStore from '../store/useStore';
 import SeverityBadge from '../components/SeverityBadge';
-
-const data = [
-  { name: 'Risk', value: 65 },
-  { name: 'Safe', value: 35 },
-];
+import { getApiError } from '../api/apiClient';
+import { downloadReportPdf, saveReport } from '../api/reportApi';
+import toast from 'react-hot-toast';
 
 const Result = () => {
   const navigate = useNavigate();
-  const { isRuralMode } = useStore();
+  const { isRuralMode, currentTriage } = useStore();
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const result = currentTriage || {
+    symptoms: ['fever', 'cough'],
+    symptoms_text: 'Fever and cough',
+    severity_score: 65,
+    severity_level: 'moderate',
+    emergency_flag: false,
+    recommendation: 'Visit a nearby PHC or clinic within 24 hours if symptoms continue.',
+    precautions: [
+      'Rest properly.',
+      'Drink enough water.',
+      'Visit a PHC if symptoms worsen.',
+    ],
+    suggested_care: 'Visit a nearby PHC or clinic within 24 hours if symptoms continue.',
+  };
+
+  const chartData = useMemo(() => {
+    const risk = Math.min(result.severity_score || 0, 100);
+
+    return [
+      { name: 'Risk', value: risk },
+      { name: 'Safe', value: 100 - risk },
+    ];
+  }, [result.severity_score]);
+
+  const severityBadge = {
+    low: 'low',
+    moderate: 'medium',
+    high: 'high',
+    emergency: 'critical',
+  }[result.severity_level] || 'low';
+
+  const handleDownloadPdf = async () => {
+    setIsDownloading(true);
+
+    try {
+      const report = await saveReport({
+        symptoms_text: result.symptoms_text || result.symptoms?.join(', ') || 'Reported symptoms',
+        selected_symptoms: result.symptoms || [],
+        body_areas: result.body_areas || [],
+        severity_score: result.severity_score,
+        severity_level: result.severity_level,
+        emergency_flag: result.emergency_flag,
+        recommendation: result.recommendation,
+        precautions: result.precautions || [],
+        suggested_care: result.suggested_care,
+        rural_mode: result.rural_mode || isRuralMode,
+      });
+
+      const blob = await downloadReportPdf(report.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = `medifirst-report-${report.id}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('PDF report downloaded');
+    } catch (error) {
+      toast.error(getApiError(error));
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -60,9 +123,13 @@ const Result = () => {
           <button className="p-2.5 bg-slate-50 text-slate-500 rounded-xl hover:bg-slate-100 transition-all">
             <Share2 size={20} />
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95">
+          <button
+            onClick={handleDownloadPdf}
+            disabled={isDownloading}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl font-bold text-sm shadow-lg shadow-primary/20 hover:bg-primary-dark transition-all active:scale-95 disabled:opacity-60"
+          >
             <Download size={18} />
-            <span className="hidden sm:inline">Report PDF</span>
+            <span className="hidden sm:inline">{isDownloading ? 'Preparing...' : 'Report PDF'}</span>
           </button>
         </div>
       </header>
@@ -79,7 +146,7 @@ const Result = () => {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={data}
+                  data={chartData}
                   cx="50%"
                   cy="50%"
                   innerRadius={60}
@@ -96,28 +163,28 @@ const Result = () => {
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="text-4xl font-black text-slate-900 leading-none">65%</span>
+              <span className="text-4xl font-black text-slate-900 leading-none">{result.severity_score}%</span>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Severity Score</span>
             </div>
           </div>
 
           <div className="flex-1 text-center md:text-left">
             <div className="flex flex-col md:row md:items-center gap-3 mb-4 justify-center md:justify-start">
-              <SeverityBadge severity="medium" className="text-sm px-4 py-1.5 w-fit mx-auto md:mx-0" />
+              <SeverityBadge severity={severityBadge} className="text-sm px-4 py-1.5 w-fit mx-auto md:mx-0" />
               <span className="text-slate-400 font-bold text-xs uppercase tracking-tighter">Analyzed Today at 11:05 AM</span>
             </div>
-            <h2 className="text-2xl font-black mb-3">Probable Viral Infection</h2>
+            <h2 className="text-2xl font-black mb-3">{result.emergency_flag ? 'Emergency Priority' : 'Triage Recommendation'}</h2>
             <p className="text-slate-600 leading-relaxed mb-6">
-              Your symptoms suggest a moderate risk. While not a life-threatening emergency, we recommend a clinical checkup within 24-48 hours.
+              {result.recommendation}
             </p>
             <div className="flex flex-wrap gap-4 justify-center md:justify-start">
               <div className="flex items-center gap-2 text-sm font-bold text-slate-500 bg-slate-100 px-4 py-2 rounded-xl">
                 <AlertCircle size={16} className="text-warning" />
-                Fever Observed
+                {(result.symptoms || ['Symptoms']).slice(0, 1).join(', ')}
               </div>
               <div className="flex items-center gap-2 text-sm font-bold text-slate-500 bg-slate-100 px-4 py-2 rounded-xl">
                 <CheckCircle2 size={16} className="text-success" />
-                Normal Breathing
+                {result.suggested_care || 'Care suggested'}
               </div>
             </div>
           </div>
@@ -135,10 +202,9 @@ const Result = () => {
             </div>
             <ul className="space-y-4">
               {[
-                "Monitor temperature every 4 hours",
-                "Stay hydrated with plenty of fluids",
-                "Rest and avoid strenuous activity",
-                "Consult a doctor if symptoms persist"
+                result.recommendation,
+                result.suggested_care,
+                ...(result.precautions || []),
               ].map((step, i) => (
                 <li key={i} className="flex gap-3 text-sm text-slate-600">
                   <div className="w-5 h-5 rounded-full bg-primary/10 flex-shrink-0 flex items-center justify-center text-primary font-bold text-[10px]">

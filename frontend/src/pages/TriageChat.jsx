@@ -15,6 +15,9 @@ import {
 import useStore from '../store/useStore';
 import ChatBubble from '../components/ChatBubble';
 import EmergencyAlert from '../components/EmergencyAlert';
+import { getApiError } from '../api/apiClient';
+import { analyzeTriage } from '../api/triageApi';
+import toast from 'react-hot-toast';
 
 const BodyMap = ({ onSelect }) => {
   const [selectedPart, setSelectedPart] = useState(null);
@@ -61,7 +64,7 @@ const BodyMap = ({ onSelect }) => {
 
 const TriageChat = () => {
   const navigate = useNavigate();
-  const { messages, addMessage, isRuralMode } = useStore();
+  const { messages, addMessage, isRuralMode, setCurrentTriage, addTriage } = useStore();
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [showBodyMap, setShowBodyMap] = useState(false);
@@ -90,32 +93,54 @@ const TriageChat = () => {
     }
   }, [addMessage, messages.length]);
 
-  const handleSend = (text = inputText) => {
+  const handleSend = async (text = inputText, options = {}) => {
     if (!text.trim()) return;
 
     addMessage({ text, isAI: false });
     setInputText('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      let response = "I understand. Could you tell me more about when this started?";
-      
-      if (text.toLowerCase().includes('chest pain') || text.toLowerCase().includes('heart')) {
+    try {
+      const result = await analyzeTriage({
+        symptomsText: text,
+        selectedSymptoms: options.selectedSymptoms || [],
+        bodyAreas: options.bodyAreas || [],
+        ruralMode: isRuralMode,
+      });
+
+      const triageResult = {
+        ...result,
+        symptoms_text: text,
+      };
+
+      setCurrentTriage(triageResult);
+      addTriage(triageResult);
+
+      if (result.emergency_flag) {
         setIsEmergencyAlertOpen(true);
-        response = "I'm detecting signs of a serious condition. Please look at the emergency alert on your screen immediately.";
-      } else if (text.toLowerCase().includes('head')) {
-        response = "Headaches can have many causes. Do you have any fever or sensitivity to light?";
       }
 
+      const response = result.emergency_flag
+        ? "Emergency warning signs were detected. Please review the alert and seek urgent care now."
+        : `${result.recommendation} You can open the result page for severity, precautions, and report download.`;
+
       addMessage({ text: response, isAI: true });
+    } catch (error) {
+      toast.error(getApiError(error));
+      addMessage({
+        text: "I could not analyze that right now. Please check the backend connection and try again.",
+        isAI: true,
+      });
+    } finally {
       setIsTyping(false);
-    }, 2000);
+    }
   };
 
   const handleBodyPartSelect = (label) => {
     setShowBodyMap(false);
-    handleSend(`I have pain in my ${label.toLowerCase()}.`);
+    handleSend(`I have pain in my ${label.toLowerCase()}.`, {
+      bodyAreas: [label],
+    });
   };
 
   return (
